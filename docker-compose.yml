@@ -1,0 +1,14 @@
+﻿version: "3"
+services:
+  AstionicBotRs:
+    image: astionicbotrs:latest
+    restart: on-failure
+    build:
+      context: .
+      dockerfile: ./dockerfile
+    deploy:
+      resources:
+        limits:
+          pids: 20
+          memory: 2G
+          cpus: "1.0"

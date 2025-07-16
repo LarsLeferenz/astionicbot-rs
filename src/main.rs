@@ -1,144 +1,115 @@
 mod commands;
 
-use std::collections::HashSet;
 use std::env;
-use std::sync::Arc;
 
-use serenity::async_trait;
-use serenity::client::bridge::gateway::ShardManager;
-use serenity::framework::standard::macros::{group, hook};
-use serenity::framework::standard::StandardFramework;
-use serenity::http::Http;
-use serenity::model::channel::Message;
-use serenity::model::event::ResumedEvent;
-use serenity::model::gateway::Ready;
-use serenity::model::prelude::Activity;
-use serenity::prelude::*;
-use tracing::{debug, error, info, instrument};
+use poise::{serenity_prelude as serenity, FrameworkError};
+use serenity::{GatewayIntents, Client, Error};
 
 use songbird::SerenityInit;
 
-/* Import commands */
-use crate::commands::askgpt::*;
-use crate::commands::help::*;
-use crate::commands::roll::*;
+type Context<'a> = poise::Context<'a, Data, Error>;
 
-use crate::commands::music::clear::*;
-use crate::commands::music::join::*;
-use crate::commands::music::leave::*;
-use crate::commands::music::nowplaying::*;
-use crate::commands::music::pause::*;
-use crate::commands::music::play::*;
-use crate::commands::music::queue::*;
-use crate::commands::music::resume::*;
-use crate::commands::music::shuffle::*;
-use crate::commands::music::skip::*;
-use crate::commands::music::stop::*;
+pub struct Data {}
 
-/* Shards container */
-pub struct ShardManagerContainer;
-
-impl TypeMapKey for ShardManagerContainer {
-    type Value = Arc<Mutex<ShardManager>>;
-}
-
-struct Handler;
-
-#[async_trait]
-impl EventHandler for Handler {
-    async fn ready(&self, ctx: Context, ready: Ready) {
-        info!(
-            "Connected as --> {} [id: {}]",
-            ready.user.name, ready.user.id
-        );
-        let status =
-            env::var("DISCORD_STATUS").expect("Set your DISCORD_STATUS environment variable!");
-        ctx.set_activity(Activity::playing(status)).await;
-    }
-
-    #[instrument(skip(self, _ctx))]
-    async fn resume(&self, _ctx: Context, resume: ResumedEvent) {
-        debug!("Resumed; trace: {:?}", resume.trace);
+async fn on_error(error: FrameworkError<'_, (), Error>) {
+    // This is our custom error handler
+    // They are many errors that can occur, so we only handle the ones we want to customize
+    // and forward the rest to the default handler
+    match error {
+        poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
+        poise::FrameworkError::Command { error, ctx, .. } => {
+            println!("Error in command `{}`: {:?}", ctx.command().name, error,);
+        }
+        error => {
+            if let Err(e) = poise::builtins::on_error(error).await {
+                println!("Error while handling error: {}", e)
+            }
+        }
     }
 }
 
-#[hook]
-#[instrument]
-async fn before(_: &Context, msg: &Message, command_name: &str) -> bool {
-    info!(
-        "Received command --> '{}' || User --> '{}'",
-        command_name, msg.author.name
-    );
-    true
-}
-
-#[group]
-#[commands(
-    // Misc
-    help,   roll,   askgpt,
-
-    // Music commands
-    leave,  play,   pause,  resume,  clear,
-    skip,   stop,   queue,  shuffle, nowplaying,
-    join,
-
-)]
-struct General;
 
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().expect("Failed to load .env file.");
 
     let token = env::var("DISCORD_TOKEN").expect("Set your DISCORD_TOKEN environment variable!");
-    let prefix = env::var("PREFIX").expect("Set your PREFIX environment variable!");
-
-    let http = Http::new(&token);
-
-    let (owners, _bot_id) = match http.get_current_application_info().await {
-        Ok(info) => {
-            let mut owners = HashSet::new();
-            owners.insert(info.owner.id);
-
-            (owners, info.id)
-        }
-        Err(why) => panic!("Could not access application info: {:?}", why),
-    };
 
     // Initialise error tracing
     tracing_subscriber::fmt::init();
 
-    let framework = StandardFramework::new()
-        .configure(|c| c.owners(owners).prefix(prefix))
-        .before(before)
-        .group(&GENERAL_GROUP);
+    let options = poise::FrameworkOptions {
+        commands: vec![
+            commands::help::help(),
+            commands::music::clear::clear(),
+            commands::music::join::join(),
+            commands::music::leave::leave(),
+            commands::music::nowplaying::nowplaying(),
+            commands::music::pause::pause(),
+            commands::music::play::play(),
+            commands::music::queue::queue(),
+            commands::music::resume::resume(),
+            commands::music::shuffle::shuffle(),
+            commands::music::skip::skip(),
+            commands::music::stop::stop(),
+        ],
+        prefix_options: poise::PrefixFrameworkOptions {
+            prefix: Some(env::var("PREFIX").unwrap_or_else(|_| "!".to_string())),
+            ..Default::default()
+        },
+        // The global error handler for all error cases that may occur
+        on_error: |error| Box::pin(on_error(error)),
+        // This code is run before every command
+        pre_command: |ctx| {
+            Box::pin(async move {
+                println!("Executing command {}...", ctx.command().qualified_name);
+            })
+        },
+        // This code is run after a command if it was successful (returned Ok)
+        post_command: |ctx| {
+            Box::pin(async move {
+                println!("Executed command {}!", ctx.command().qualified_name);
+            })
+        },
+        event_handler: |_ctx, event, _framework, _data| {
+            Box::pin(async move {
+                println!(
+                    "Got an event in event handler: {:?}",
+                    event.snake_case_name()
+                );
+                Ok(())
+            })
+        },
+        ..Default::default()
+    };
 
     let intents = GatewayIntents::non_privileged()
         | GatewayIntents::MESSAGE_CONTENT
-        | GatewayIntents::DIRECT_MESSAGES
         | GatewayIntents::GUILD_VOICE_STATES;
+
+    let framework = poise::Framework::builder()
+        .setup(move |ctx, _ready, framework| {
+            Box::pin(async move {
+                println!("Logged in as {}", _ready.user.name);
+                poise::builtins::register_globally(ctx, &framework.options().commands).await?;
+                Ok(())
+            })
+        })
+        .options(options)
+        .build();
 
     let mut client = Client::builder(&token, intents)
         .framework(framework)
         .register_songbird()
-        .event_handler(Handler)
         .await
         .expect("Err creating client");
 
-    {
-        let mut data = client.data.write().await;
-        data.insert::<ShardManagerContainer>(client.shard_manager.clone());
-    }
-
-    let shard_manager = client.shard_manager.clone();
-
     tokio::spawn(async move {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("Could not register ctrl+c handler");
-        shard_manager.lock().await.shutdown_all().await;
+        let _ = tokio::signal::ctrl_c().await;
+        println!("Received Ctrl+C, shutting down.");
     });
 
     if let Err(why) = client.start().await {
-        error!("Client error: {:?}", why);
+        println!("Client error: {:?}", why);
     }
 }

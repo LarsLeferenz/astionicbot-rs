@@ -1,18 +1,16 @@
-use serenity::framework::standard::macros::command;
-use serenity::framework::standard::CommandResult;
-use serenity::model::prelude::*;
-use serenity::prelude::*;
+﻿use serenity::model::prelude::*;
+use poise::{command, Context};
+use serenity::builder::{CreateEmbed, CreateMessage};
+use serenity::Error;
 
 use crate::commands::utils::to_time;
 
-#[command]
-#[aliases("np")]
-#[only_in(guilds)]
-async fn nowplaying(ctx: &Context, msg: &Message) -> CommandResult {
-    let guild = msg.guild(&ctx.cache).unwrap();
-    let guild_id = guild.id;
+/// Shows the currently playing track
+#[command(prefix_command, slash_command, guild_only, aliases("np"))]
+pub async fn nowplaying(ctx: Context<'_, (), Error>, _input: String) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().unwrap();
 
-    let manager = songbird::get(ctx)
+    let manager = songbird::get(&ctx.serenity_context())
         .await
         .expect("Songbird Voice client placed in at initialisation.")
         .clone();
@@ -24,62 +22,45 @@ async fn nowplaying(ctx: &Context, msg: &Message) -> CommandResult {
         let current = match queue.current() {
             Some(current) => current,
             None => {
-                msg.channel_id
-                    .send_message(&ctx.http, |m| {
-                        m.embed(|e| {
-                            e.colour(0xf38ba8)
-                                .title(":warning: Nothing is playing right now.")
-                                .timestamp(Timestamp::now())
-                        })
-                    })
+                ctx.channel_id()
+                    .send_message(&ctx.serenity_context().http, CreateMessage::new()
+                        .embed(CreateEmbed::new()
+                            .colour(0xf38ba8)
+                            .title(":warning: Nothing is playing right now.")
+                            .timestamp(Timestamp::now())
+                        )
+                    )
                     .await?;
 
                 return Ok(());
             }
         };
 
-        let metadata = current.metadata();
         let track_info = current.get_info().await.unwrap();
-
-        let date_formatted = match &metadata.date {
-            Some(date) => {
-                format!("{}/{}/{}", &date[6..8], &date[4..6], &date[0..4])
-            }
-            None => String::from("Unknown"),
-        };
-
-        let time_formatted = {
-            format!(
-                "{} - {}",
-                to_time(track_info.position.as_secs()),
-                to_time(metadata.duration.unwrap().as_secs())
-            )
-        };
-
-        msg.channel_id.send_message(&ctx.http, |m| {
-            m.embed(|e| e
-                .colour(0xffffff)
-                .title(metadata.title.clone().unwrap_or_else(|| String::from("Unknown")))
-                .thumbnail(metadata.thumbnail.clone().unwrap_or_else(|| String::from("https://images.unsplash.com/photo-1611162616475-46b635cb6868?ixlib=rb-4.0.3")))
-                .url(metadata.source_url.clone().unwrap())
-                .fields(vec![
-                    ("Artist", metadata.artist.clone().unwrap_or_else(|| String::from("Unknown")), false),
-                    ("Released", date_formatted, true),
-                    ("Position", time_formatted, true),
-                    ("Status", format!("{:?}", track_info.playing), true),
-                ])
-                .timestamp(Timestamp::now())
-            )
-        }).await?;
+        
+        // Simplified version without metadata
+        ctx.channel_id()
+            .send_message(&ctx.serenity_context().http, CreateMessage::new()
+                .embed(CreateEmbed::new()
+                    .colour(0xffffff)
+                    .title("Now Playing")
+                    .description("Track information is limited in this version.")
+                    .fields(vec![
+                        ("Position", to_time(track_info.position.as_secs()), true),
+                        ("Status", format!("{:?}", track_info.playing), true),
+                    ])
+                    .timestamp(Timestamp::now())
+                )
+            ).await?;
     } else {
-        msg.channel_id
-            .send_message(&ctx.http, |m| {
-                m.embed(|e| {
-                    e.colour(0xf38ba8)
-                        .title(":warning: Not in a voice channel.")
-                        .timestamp(Timestamp::now())
-                })
-            })
+        ctx.channel_id()
+            .send_message(&ctx.serenity_context().http, CreateMessage::new()
+                .embed(CreateEmbed::new()
+                    .colour(0xf38ba8)
+                    .title(":warning: Not in a voice channel.")
+                    .timestamp(Timestamp::now())
+                )
+            )
             .await?;
     }
     Ok(())
