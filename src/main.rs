@@ -1,7 +1,6 @@
 mod commands;
 
 use std::env;
-
 use poise::{FrameworkError, serenity_prelude as serenity};
 use serenity::all::ActivityData;
 use serenity::{Client, GatewayIntents};
@@ -10,7 +9,9 @@ use songbird::SerenityInit;
 type Error = serenity::Error;
 type Context<'a> = poise::Context<'a, Data, Error>;
 
-pub struct Data {}
+pub struct Data {
+    http_client: reqwest::Client,
+}
 
 async fn on_error(error: FrameworkError<'_, Data, Error>) {
     // This is our custom error handler
@@ -91,7 +92,9 @@ async fn main() {
             Box::pin(async move {
                 println!("Logged in as {}", _ready.user.name);
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                Ok(Data {})
+                Ok(Data {
+                    http_client: reqwest::Client::new(),
+                })
             })
         })
         .options(options)

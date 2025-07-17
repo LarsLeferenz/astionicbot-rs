@@ -70,6 +70,16 @@ pub async fn join(ctx: Context<'_>) -> Result<(), Error> {
         return Ok(());
     }
 
+    let handler_lock = match manager.get(guild_id) {
+        Some(handler) => handler,
+        None => {
+            return Ok(());
+        },
+    };
+
+    let _result = handler_lock.lock().await.deafen(true).await;
+
+
     ctx.send(
         CreateReply::default().embed(
             CreateEmbed::new()

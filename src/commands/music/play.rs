@@ -2,8 +2,11 @@ use crate::{Context, Error};
 use poise::{CreateReply, serenity_prelude as serenity};
 use regex::Regex;
 use serenity::all::CreateEmbed;
+use serenity::futures::stream::FuturesUnordered;
+use serenity::futures::StreamExt;
 use serenity::model::prelude::*;
 use songbird::input::{Compose, YoutubeDl};
+use songbird::tracks::TrackHandle;
 use tokio::process::Command;
 use tracing::info;
 
@@ -69,7 +72,23 @@ pub async fn play(
         }
     }
 
+    let reply = ctx.send(CreateReply::default().embed(
+        CreateEmbed::new()
+            .colour(0xffffff)
+            .title(":notes: Fetching song(s)...")
+            .description("Please wait...")
+            .timestamp(Timestamp::now())
+        )
+        .ephemeral(false)
+    ).await?;
+
     if let Some(handler_lock) = manager.get(ctx.guild_id().unwrap()) {
+
+        let http_client = &ctx.data().http_client;
+        let mut handler = handler_lock.lock().await;
+
+        let _result = handler.deafen(true).await;
+
         // Handle YT Music by redirecting to youtube.com equivalent
         if url.clone().starts_with("http") && url.contains("music.") {
             let _ = url.replace("music.", "");
@@ -77,14 +96,13 @@ pub async fn play(
 
         // search on youtube for video with given name and pick first from search result
         if !url.clone().starts_with("http") {
-            let mut handler = handler_lock.lock().await;
-            let source = YoutubeDl::new_search(reqwest::Client::new(), search);
+            let source = YoutubeDl::new_search(http_client.clone(), search);
 
             handler.enqueue(source.clone().into()).await;
 
             let metadata = source.clone().aux_metadata().await.unwrap();
 
-            ctx.send(CreateReply::default().embed(
+            reply.edit(ctx, CreateReply::default().embed(
                 CreateEmbed::new()
                     .colour(0xffffff)
                     .title(":notes: Song added to the queue!")
@@ -105,23 +123,7 @@ pub async fn play(
             return Ok(());
         // handle playlist
         } else if url.contains("playlist") {
-            let mut handler = handler_lock.lock().await;
             // goal is to immediately queue and start playing first track while processing whole queue
-
-            let mut queued = String::new();
-
-            let message = ctx
-                .send(
-                    CreateReply::default()
-                        .embed(
-                            CreateEmbed::new()
-                                .title(":page_facing_up: Queueing playlist:")
-                                .description(&queued)
-                                .timestamp(Timestamp::now()),
-                        )
-                        .ephemeral(true),
-                )
-                .await?;
 
             if handler.queue().current().is_none() {
                 info!("Current queue is empty, launching first track");
@@ -145,40 +147,40 @@ pub async fn play(
                     .collect();
 
                 let clone_urls = urls.clone();
+
+                let mut queued: Vec<(String, String, bool)> = Vec::new();
+
                 for url in clone_urls {
                     info!("Queueing --> {}", url);
-                    let source = YoutubeDl::new(reqwest::Client::new(), url.clone());
+                    let source = YoutubeDl::new(http_client.clone(), url.clone());
                     handler.enqueue(source.clone().into()).await;
 
                     let metadata = source.clone().aux_metadata().await.unwrap();
-                    queued.push_str(&format!(
-                        "[{}]({}) - {}\n",
-                        metadata.title.unwrap_or("<Missing>".to_string()),
-                        url,
-                        metadata.artist.unwrap_or("<Missing>".to_string())
-                    ));
-                    message
-                        .edit(
+                    queued.push((metadata.title.unwrap_or("<Missing>".to_string()),
+                                 format!("{} - [Link]({})",metadata.artist.unwrap_or("<Missing>".to_string()), url.clone(), ), false)
+                    );
+
+                    reply.edit(
                             ctx,
                             CreateReply::default().embed(
                                 CreateEmbed::new()
                                     .title(":page_facing_up: Queueing playlist:")
-                                    .description(&queued)
+                                    .fields(queued.clone())
                                     .timestamp(Timestamp::now()),
                             ),
                         )
                         .await?;
                 }
+
             }
         // handle live stream
         } else if url.contains("live") {
-            let mut handler = handler_lock.lock().await;
-            let source = YoutubeDl::new(reqwest::Client::new(), url);
+            let source = YoutubeDl::new(http_client.clone(), url);
             let _song = handler.enqueue(source.clone().into()).await;
 
             let metadata = source.clone().aux_metadata().await.unwrap();
 
-            ctx.send(CreateReply::default().embed(
+            reply.edit(ctx, CreateReply::default().embed(
                 CreateEmbed::new()
                     .colour(0xffffff)
                     .title(":notes: Added to playlist!")
@@ -198,12 +200,11 @@ pub async fn play(
             return Ok(());
         // handle direct link to a video
         } else {
-            let mut handler = handler_lock.lock().await;
-            let source = YoutubeDl::new(reqwest::Client::new(), url);
+            let source = YoutubeDl::new(http_client.clone(), url);
             let _song = handler.enqueue(source.clone().into()).await;
 
             let metadata = source.clone().aux_metadata().await.unwrap();
-            ctx.send(CreateReply::default().embed(
+            reply.edit(ctx, CreateReply::default().embed(
                 CreateEmbed::new()
                     .colour(0xffffff)
                     .title(":notes: Added to playlist!")
