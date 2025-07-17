@@ -2,16 +2,17 @@ mod commands;
 
 use std::env;
 
-use poise::{serenity_prelude as serenity, FrameworkError};
-use serenity::{GatewayIntents, Client, Error};
-
+use poise::{FrameworkError, serenity_prelude as serenity};
+use serenity::all::ActivityData;
+use serenity::{Client, GatewayIntents};
 use songbird::SerenityInit;
 
+type Error = serenity::Error;
 type Context<'a> = poise::Context<'a, Data, Error>;
 
 pub struct Data {}
 
-async fn on_error(error: FrameworkError<'_, (), Error>) {
+async fn on_error(error: FrameworkError<'_, Data, Error>) {
     // This is our custom error handler
     // They are many errors that can occur, so we only handle the ones we want to customize
     // and forward the rest to the default handler
@@ -28,22 +29,20 @@ async fn on_error(error: FrameworkError<'_, (), Error>) {
     }
 }
 
-
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().expect("Failed to load .env file.");
 
     let token = env::var("DISCORD_TOKEN").expect("Set your DISCORD_TOKEN environment variable!");
 
-    // Initialise error tracing
+    // Initialize error tracing
     tracing_subscriber::fmt::init();
 
-    let options = poise::FrameworkOptions {
+    let options: poise::FrameworkOptions<Data, Error> = poise::FrameworkOptions {
         commands: vec![
             commands::help::help(),
             commands::music::clear::clear(),
             commands::music::join::join(),
-            commands::music::leave::leave(),
             commands::music::nowplaying::nowplaying(),
             commands::music::pause::pause(),
             commands::music::play::play(),
@@ -92,7 +91,7 @@ async fn main() {
             Box::pin(async move {
                 println!("Logged in as {}", _ready.user.name);
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                Ok(())
+                Ok(Data {})
             })
         })
         .options(options)
@@ -101,15 +100,22 @@ async fn main() {
     let mut client = Client::builder(&token, intents)
         .framework(framework)
         .register_songbird()
+        .activity(ActivityData::custom("Watching the stars..."))
         .await
         .expect("Err creating client");
 
-    tokio::spawn(async move {
-        let _ = tokio::signal::ctrl_c().await;
-        println!("Received Ctrl+C, shutting down.");
-    });
+    tokio::select! {
+        result = client.start() => {
+            if let Err(why) = result {
+                println!("Client error: {:?}", why);
+            }
+        }
+        _ = tokio::signal::ctrl_c() => {
+            println!("Received Ctrl+C, shutting down.");
 
-    if let Err(why) = client.start().await {
-        println!("Client error: {:?}", why);
+            // Get songbird manager to stop all music
+            client.shard_manager.shutdown_all().await;
+            println!("Bot shutdown complete.");
+        }
     }
 }

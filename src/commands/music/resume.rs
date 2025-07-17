@@ -1,14 +1,16 @@
-﻿use serenity::model::prelude::*;
-use poise::{command, Context};
+use crate::{Context, Error};
+use poise::command;
 use serenity::builder::{CreateEmbed, CreateMessage};
-use serenity::Error;
+use serenity::model::prelude::*;
 
 /// Resumes playback of the current track
 #[command(prefix_command, slash_command, guild_only)]
-pub async fn resume(ctx: Context<'_, (), Error>, _input: String) -> Result<(), Error> {
+pub async fn resume(ctx: Context<'_>) -> Result<(), Error> {
+    ctx.defer().await?;
+
     let guild_id = ctx.guild_id().unwrap();
 
-    let manager = songbird::get(&ctx.serenity_context())
+    let manager = songbird::get(ctx.serenity_context())
         .await
         .expect("Songbird Voice client placed in at initialisation.")
         .clone();
@@ -19,24 +21,29 @@ pub async fn resume(ctx: Context<'_, (), Error>, _input: String) -> Result<(), E
         let _ = queue.resume();
 
         ctx.channel_id()
-            .send_message(&ctx.serenity_context().http, CreateMessage::new()
-                .embed(CreateEmbed::new()
-                    .colour(0xffffff)
-                    .title(":arrow_forward: Resumed!")
-                    .timestamp(Timestamp::now())
-                )
+            .send_message(
+                &ctx.serenity_context().http,
+                CreateMessage::new().embed(
+                    CreateEmbed::new()
+                        .colour(0xffffff)
+                        .title(":arrow_forward: Resumed!")
+                        .timestamp(Timestamp::now()),
+                ),
             )
             .await?;
     } else {
         ctx.channel_id()
-            .send_message(&ctx.serenity_context().http, CreateMessage::new()
-                .embed(CreateEmbed::new()
-                    .colour(0xf38ba8)
-                    .title(":warning: Not in a voice channel.")
-                    .timestamp(Timestamp::now())
-                )
+            .send_message(
+                &ctx.serenity_context().http,
+                CreateMessage::new().embed(
+                    CreateEmbed::new()
+                        .colour(0xf38ba8)
+                        .title(":warning: Not in a voice channel.")
+                        .timestamp(Timestamp::now()),
+                ),
             )
             .await?;
     }
+    ctx.reply("Resumed.").await?;
     Ok(())
 }

@@ -1,6 +1,5 @@
 pub mod clear;
 pub mod join;
-pub mod leave;
 pub mod nowplaying;
 pub mod pause;
 pub mod play;

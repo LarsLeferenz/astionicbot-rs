@@ -1,15 +1,17 @@
-﻿use rand::Rng;
-use serenity::model::prelude::*;
-use poise::{command, Context};
+use crate::{Context, Error};
+use poise::command;
+use rand::Rng;
 use serenity::builder::{CreateEmbed, CreateMessage};
-use serenity::Error;
+use serenity::model::prelude::*;
 
 /// Shuffles the current queue
 #[command(prefix_command, slash_command, guild_only)]
-pub async fn shuffle(ctx: Context<'_, (), Error>, _input: String) -> Result<(), Error> {
+pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
+    ctx.defer().await?;
+
     let guild_id = ctx.guild_id().unwrap();
 
-    let manager = songbird::get(&ctx.serenity_context())
+    let manager = songbird::get(ctx.serenity_context())
         .await
         .expect("Songbird Voice client placed in at initialisation.")
         .clone();
@@ -20,32 +22,34 @@ pub async fn shuffle(ctx: Context<'_, (), Error>, _input: String) -> Result<(), 
 
         queue.modify_queue(|queue| {
             // skip the first track on queue because it's being played
-            fisher_yates_shuffle(
-                queue.make_contiguous()[1..].as_mut(),
-                &mut rand::thread_rng(),
-            )
+            fisher_yates_shuffle(queue.make_contiguous()[1..].as_mut(), &mut rand::rng())
         });
 
         ctx.channel_id()
-            .send_message(&ctx.serenity_context().http, CreateMessage::new()
-                .embed(CreateEmbed::new()
-                    .colour(0xffffff)
-                    .title(":notes: Queue shuffled!")
-                    .timestamp(Timestamp::now())
-                )
+            .send_message(
+                &ctx.serenity_context().http,
+                CreateMessage::new().embed(
+                    CreateEmbed::new()
+                        .colour(0xffffff)
+                        .title(":notes: Queue shuffled!")
+                        .timestamp(Timestamp::now()),
+                ),
             )
             .await?;
     } else {
         ctx.channel_id()
-            .send_message(&ctx.serenity_context().http, CreateMessage::new()
-                .embed(CreateEmbed::new()
-                    .colour(0xf38ba8)
-                    .title(":warning: Not in a voice channel.")
-                    .timestamp(Timestamp::now())
-                )
+            .send_message(
+                &ctx.serenity_context().http,
+                CreateMessage::new().embed(
+                    CreateEmbed::new()
+                        .colour(0xf38ba8)
+                        .title(":warning: Not in a voice channel.")
+                        .timestamp(Timestamp::now()),
+                ),
             )
             .await?;
     }
+    ctx.reply("Shuffled.").await?;
     Ok(())
 }
 
@@ -56,6 +60,6 @@ where
     let mut index = arr.len();
     while index >= 2 {
         index -= 1;
-        arr.swap(index, rng.gen_range(0..(index + 1)));
+        arr.swap(index, rng.random_range(0..(index + 1)));
     }
 }
