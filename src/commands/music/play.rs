@@ -5,10 +5,12 @@ use serenity::all::CreateEmbed;
 use serenity::futures::stream::FuturesUnordered;
 use serenity::futures::StreamExt;
 use serenity::model::prelude::*;
+use songbird::CoreEvent;
 use songbird::input::{Compose, YoutubeDl};
 use songbird::tracks::TrackHandle;
 use tokio::process::Command;
 use tracing::info;
+use crate::commands::music::eventhandller::CustomSongbirdEventHandler;
 
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn play(
@@ -88,6 +90,8 @@ pub async fn play(
         let mut handler = handler_lock.lock().await;
 
         let _result = handler.deafen(true).await;
+
+        handler.add_global_event(songbird::Event::Core(CoreEvent::DriverDisconnect), CustomSongbirdEventHandler{});
 
         // Handle YT Music by redirecting to youtube.com equivalent
         if url.clone().starts_with("http") && url.contains("music.") {

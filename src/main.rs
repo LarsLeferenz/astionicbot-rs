@@ -93,7 +93,7 @@ async fn main() {
                 println!("Logged in as {}", _ready.user.name);
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
                 Ok(Data {
-                    http_client: reqwest::Client::new(),
+                    http_client: reqwest::Client::new()
                 })
             })
         })
