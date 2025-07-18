@@ -1,10 +1,10 @@
 mod commands;
 
-use std::env;
 use poise::{FrameworkError, serenity_prelude as serenity};
 use serenity::all::ActivityData;
 use serenity::{Client, GatewayIntents};
 use songbird::SerenityInit;
+use std::env;
 
 type Error = serenity::Error;
 type Context<'a> = poise::Context<'a, Data, Error>;
@@ -18,8 +18,8 @@ async fn on_error(error: FrameworkError<'_, Data, Error>) {
     // They are many errors that can occur, so we only handle the ones we want to customize
     // and forward the rest to the default handler
     match error {
-        poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
-        poise::FrameworkError::Command { error, ctx, .. } => {
+        FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
+        FrameworkError::Command { error, ctx, .. } => {
             println!("Error in command `{}`: {:?}", ctx.command().name, error,);
         }
         error => {
@@ -93,7 +93,7 @@ async fn main() {
                 println!("Logged in as {}", _ready.user.name);
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
                 Ok(Data {
-                    http_client: reqwest::Client::new()
+                    http_client: reqwest::Client::new(),
                 })
             })
         })

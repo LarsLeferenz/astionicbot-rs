@@ -37,7 +37,6 @@ LABEL type="AstionicBotRs"
 
 # Install required dependencies
 RUN apk add --update \
-    ffmpeg \
     yt-dlp
 
 COPY .env /.env

@@ -8,13 +8,14 @@ serenity = { version = "0.12.4", features = ["client", "standard_framework", "vo
 tokio = { version = "1.21.2", features = ["macros", "rt-multi-thread", "signal"] }
 tracing = "0.1.37"
 tracing-subscriber = "0.3.17"
-songbird = { version = "0.5.0", features = ["builtin-queue", "serenity"] }
+songbird = {git="https://github.com/MincoMK/songbird", rev = "9dfd04e41b2865603c258ad48839b05e105c6c09", features = ["builtin-queue", "serenity"] } # This PR fixes ytdl playback TODO: Change to main repo once pulled
+#songbird = { version = "0.5.0", features = ["builtin-queue", "serenity"] }
 rand = "0.9.1"
 regex = "1.8.3"
 dotenvy = "0.15.7"
 poise = "0.6.1"
 reqwest = { version = "0.12.22", default-features = false, features = ["rustls-tls"] }
-symphonia = {version = "0.5.4", features = ['pcm','mp3','wav','isomp4','aac','alac'] }
+symphonia = {version = "0.5.4", features = ['all', 'opt-simd'] }
 
 [profile.release]
 strip = true

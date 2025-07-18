@@ -74,11 +74,10 @@ pub async fn join(ctx: Context<'_>) -> Result<(), Error> {
         Some(handler) => handler,
         None => {
             return Ok(());
-        },
+        }
     };
 
     let _result = handler_lock.lock().await.deafen(true).await;
-
 
     ctx.send(
         CreateReply::default().embed(

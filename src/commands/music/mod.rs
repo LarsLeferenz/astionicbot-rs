@@ -1,4 +1,5 @@
 pub mod clear;
+pub mod eventhandller;
 pub mod join;
 pub mod nowplaying;
 pub mod pause;
@@ -8,4 +9,3 @@ pub mod resume;
 pub mod shuffle;
 pub mod skip;
 pub mod stop;
-pub mod eventhandller;
