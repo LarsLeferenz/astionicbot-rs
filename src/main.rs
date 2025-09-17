@@ -77,6 +77,37 @@ async fn main() {
                     "Got an event in event handler: {:?}",
                     event.snake_case_name()
                 );
+
+                match event {
+                    serenity::FullEvent::Message { new_message } => {
+                        //println!("Received message: {}", new_message.content);
+                        if new_message.content.contains("Sup") {
+                            new_message.reply(&_ctx.http, "Not much").await.expect("Das ist ja mies gelaufen");
+                        }
+                        let mut found = false;
+                        new_message.sticker_items.iter().for_each(|sticker| {
+                            println!("Sticker ID: {}, Name: {}", sticker.id, sticker.name);
+                            if sticker.name == "Sup" {
+                                found = true;
+                            }
+                        });
+                        if found {
+                            let attachment = serenity::CreateAttachment::path("grrr.mp3").await.expect("Doof");
+                            //new_message.reply(&_ctx.http, "Not much").await.expect("Mist");
+                            new_message
+                                .channel_id
+                                .send_message(
+                                    &_ctx.http,
+                                    serenity::CreateMessage::new()
+                                        .reference_message(new_message) // make it a reply (optional)
+                                        .add_sticker_id(serenity::StickerId::new(1417970496720470126))
+                                        .add_file(attachment)
+                                ).await.expect("Mist");
+                        }
+                    }
+                    _ => {}
+                };
+
                 Ok(())
             })
         },
@@ -93,7 +124,11 @@ async fn main() {
                 println!("Logged in as {}", _ready.user.name);
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
                 Ok(Data {
-                    http_client: reqwest::Client::new(),
+                    http_client: reqwest::Client::builder()
+                        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                        .build().unwrap_or_else(|_| {
+                            panic!("Failed to create http client")
+                        })
                 })
             })
         })

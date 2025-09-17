@@ -41,5 +41,6 @@ RUN apk add --update \
 
 COPY .env /.env
 COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/astionicbot /usr/local/bin/astionicbot
+COPY grrr.mp3 /grrr.mp3
 
 CMD ["astionicbot"]
