@@ -32,7 +32,8 @@ async fn on_error(error: FrameworkError<'_, Data, Error>) {
 
 #[tokio::main]
 async fn main() {
-    dotenvy::dotenv().expect("Failed to load .env file.");
+    // Load .env if present (local dev). In production the container uses real env vars.
+    dotenvy::dotenv().ok();
 
     let token = env::var("DISCORD_TOKEN").expect("Set your DISCORD_TOKEN environment variable!");
 
@@ -95,7 +96,12 @@ async fn main() {
                             }
                         });
                         if found {
-                            let attachment = serenity::CreateAttachment::path("grrr.mp3")
+                            let audio_path = if std::path::Path::new("/app/grrr.mp3").exists() {
+                                "/app/grrr.mp3"
+                            } else {
+                                "grrr.mp3"
+                            };
+                            let attachment = serenity::CreateAttachment::path(audio_path)
                                 .await
                                 .expect("Doof");
                             //new_message.reply(&_ctx.http, "Not much").await.expect("Mist");

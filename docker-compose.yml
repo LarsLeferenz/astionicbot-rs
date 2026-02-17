@@ -1,11 +1,31 @@
-﻿version: "3"
-services:
+﻿services:
+  bgutil:
+    image: brainicism/bgutil-ytdlp-pot-provider:latest
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+
   AstionicBotRs:
     image: astionicbotrs:latest
     restart: on-failure
+    network_mode: "service:bgutil"
     build:
       context: .
       dockerfile: ./dockerfile
+    depends_on:
+      - bgutil
+    env_file:
+      - .env
+    environment:
+      - CONTAINER_ENV=true
+      - RUST_LOG=info
+    # Optional: mount a Netscape-format cookies.txt to improve YouTube reliability.
+    # Export cookies from your browser using a browser extension like "Get cookies.txt".
+    # volumes:
+    #   - ./cookies.txt:/app/cookies.txt:ro
     deploy:
       resources:
         limits:

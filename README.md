@@ -10,6 +10,7 @@ This fork includes the following changes:
 
 ## Running
 
+### Docker (Recommended)
 ```shell
-docker ...
+docker-compose up --build
 ```
