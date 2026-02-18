@@ -1,3 +1,5 @@
+#[macro_use]
+mod macros;
 mod commands;
 
 use poise::{FrameworkError, serenity_prelude as serenity};
@@ -5,12 +7,14 @@ use serenity::all::ActivityData;
 use serenity::{Client, GatewayIntents};
 use songbird::SerenityInit;
 use std::env;
+use std::process::ExitCode;
 
 type Error = serenity::Error;
 type Context<'a> = poise::Context<'a, Data, Error>;
 
 pub struct Data {
     http_client: reqwest::Client,
+    restart_requested: tokio_util::sync::CancellationToken,
 }
 
 async fn on_error(error: FrameworkError<'_, Data, Error>) {
@@ -31,7 +35,7 @@ async fn on_error(error: FrameworkError<'_, Data, Error>) {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> ExitCode {
     // Load .env if present (local dev). In production the container uses real env vars.
     dotenvy::dotenv().ok();
 
@@ -43,6 +47,7 @@ async fn main() {
     let options: poise::FrameworkOptions<Data, Error> = poise::FrameworkOptions {
         commands: vec![
             commands::help::help(),
+            commands::restart::restart(),
             commands::music::clear::clear(),
             commands::music::join::join(),
             commands::music::nowplaying::nowplaying(),
@@ -80,6 +85,34 @@ async fn main() {
                 );
 
                 match event {
+                    serenity::FullEvent::Ready { data_about_bot } => {
+                        if std::fs::exists("restart_signal.txt").unwrap() {
+                            let content = std::fs::read_to_string("restart_signal.txt").unwrap();
+                            let mut lines = content.lines();
+                            let channel_id = lines
+                                .next()
+                                .and_then(|line| line.parse::<u64>().ok())
+                                .map(|integer| serenity::ChannelId::new(integer))
+                                .expect("Failed to parse channel ID from restart signal file.");
+                            let message_id = lines
+                                .next()
+                                .and_then(|line| line.parse::<u64>().ok())
+                                .map(|integer| serenity::MessageId::new(integer))
+                                .expect("Failed to parse message ID from restart signal file.");
+                            let mut message = channel_id
+                                .message(&_ctx.http, message_id)
+                                .await
+                                .expect("Failed to fetch message for restart signal.");
+
+                            message
+                                .reply(&_ctx.http, "Sucessfully restarted!")
+                                .await
+                                .expect("Failed to reply to message for restart signal.");
+
+                            std::fs::remove_file("restart_signal.txt")
+                                .expect("Failed to delete restart signal file.");
+                        }
+                    }
                     serenity::FullEvent::Message { new_message } => {
                         //println!("Received message: {}", new_message.content);
                         if new_message.content.contains("Sup") {
@@ -133,6 +166,9 @@ async fn main() {
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::GUILD_VOICE_STATES;
 
+    let restart_requested_token = tokio_util::sync::CancellationToken::new();
+    let restart_requested_token_clone = restart_requested_token.clone();
+
     let framework = poise::Framework::builder()
         .setup(move |ctx, _ready, framework| {
             Box::pin(async move {
@@ -158,7 +194,8 @@ async fn main() {
                         .timeout(std::time::Duration::from_secs(30))
                         .build().unwrap_or_else(|_| {
                             panic!("Failed to create http client")
-                        })
+                        }),
+                        restart_requested: restart_requested_token_clone,
                 })
             })
         })
@@ -168,15 +205,28 @@ async fn main() {
     let mut client = Client::builder(&token, intents)
         .framework(framework)
         .register_songbird()
-        .activity(ActivityData::custom("Watching the stars..."))
+        .activity(ActivityData::custom("🎶 Fixed Youtube Playback!"))
         .await
         .expect("Err creating client");
 
-    tokio::select! {
+    let exit_code = tokio::select! {
         result = client.start() => {
             if let Err(why) = result {
                 println!("Client error: {:?}", why);
+                1
+            } else {
+            0
             }
+
+        }
+        _ = restart_requested_token.cancelled() => {
+            println!("Restart requested, shutting down.");
+
+            // Get songbird manager to stop all music
+            client.shard_manager.shutdown_all().await;
+            println!("Bot shutdown complete.");
+
+            42
         }
         _ = tokio::signal::ctrl_c() => {
             println!("Received Ctrl+C, shutting down.");
@@ -184,6 +234,9 @@ async fn main() {
             // Get songbird manager to stop all music
             client.shard_manager.shutdown_all().await;
             println!("Bot shutdown complete.");
+            0
         }
-    }
+    };
+
+    ExitCode::from(exit_code)
 }

@@ -1,6 +1,6 @@
 use crate::{Context, Error};
-use poise::command;
-use serenity::builder::{CreateEmbed, CreateMessage};
+use poise::{CreateReply, command};
+use serenity::builder::CreateEmbed;
 use serenity::model::prelude::*;
 
 #[command(prefix_command, slash_command, guild_only)]
@@ -18,29 +18,25 @@ pub async fn clear(ctx: Context<'_>) -> Result<(), Error> {
         let handler = handler_lock.lock().await;
         let queue = handler.queue();
         queue.stop();
-        ctx.channel_id()
-            .send_message(
-                &ctx.serenity_context().http,
-                CreateMessage::new().embed(
-                    CreateEmbed::new()
-                        .colour(0xffffff)
-                        .title("Cleared the queue")
-                        .timestamp(Timestamp::now()),
-                ),
-            )
-            .await?;
+        ctx.send(
+            CreateReply::default().embed(
+                CreateEmbed::new()
+                    .colour(0xffffff)
+                    .title("Cleared the queue")
+                    .timestamp(Timestamp::now()),
+            ),
+        )
+        .await?;
     } else {
-        ctx.channel_id()
-            .send_message(
-                &ctx.serenity_context().http,
-                CreateMessage::new().embed(
-                    CreateEmbed::new()
-                        .colour(0xf38ba8)
-                        .title(":warning: Not in a voice channel.")
-                        .timestamp(Timestamp::now()),
-                ),
-            )
-            .await?;
+        ctx.send(
+            CreateReply::default().embed(
+                CreateEmbed::new()
+                    .colour(0xf38ba8)
+                    .title(":warning: Not in a voice channel.")
+                    .timestamp(Timestamp::now()),
+            ),
+        )
+        .await?;
     }
     Ok(())
 }

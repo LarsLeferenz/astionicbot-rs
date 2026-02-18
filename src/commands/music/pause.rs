@@ -1,5 +1,5 @@
 use crate::{Context, Error};
-use poise::command;
+use poise::{CreateReply, command};
 use serenity::builder::{CreateEmbed, CreateMessage};
 use serenity::model::prelude::*;
 /// Pauses the currently playing track
@@ -19,43 +19,37 @@ pub async fn pause(ctx: Context<'_>) -> Result<(), Error> {
         let queue = handler.queue();
         if let Err(e) = queue.pause() {
             println!("Failed to pause track: {}", e);
-            ctx.channel_id()
-                .send_message(
-                    &ctx.serenity_context().http,
-                    CreateMessage::new().embed(
-                        CreateEmbed::new()
-                            .colour(0xf38ba8)
-                            .title("Failed to pause track.")
-                            .timestamp(Timestamp::now()),
-                    ),
-                )
-                .await?;
+            ctx.send(
+                CreateReply::default().embed(
+                    CreateEmbed::new()
+                        .colour(0xf38ba8)
+                        .title("Failed to pause track.")
+                        .timestamp(Timestamp::now()),
+                ),
+            )
+            .await?;
             return Ok(());
         }
 
-        ctx.channel_id()
-            .send_message(
-                &ctx.serenity_context().http,
-                CreateMessage::new().embed(
-                    CreateEmbed::new()
-                        .colour(0xffffff)
-                        .title(":pause_button: Paused!")
-                        .timestamp(Timestamp::now()),
-                ),
-            )
-            .await?;
+        ctx.send(
+            CreateReply::default().embed(
+                CreateEmbed::new()
+                    .colour(0xffffff)
+                    .title(":pause_button: Paused!")
+                    .timestamp(Timestamp::now()),
+            ),
+        )
+        .await?;
     } else {
-        ctx.channel_id()
-            .send_message(
-                &ctx.serenity_context().http,
-                CreateMessage::new().embed(
-                    CreateEmbed::new()
-                        .colour(0xf38ba8)
-                        .title(":warning: Not in a voice channel.")
-                        .timestamp(Timestamp::now()),
-                ),
-            )
-            .await?;
+        ctx.send(
+            CreateReply::default().embed(
+                CreateEmbed::new()
+                    .colour(0xf38ba8)
+                    .title(":warning: Not in a voice channel.")
+                    .timestamp(Timestamp::now()),
+            ),
+        )
+        .await?;
     }
     Ok(())
 }

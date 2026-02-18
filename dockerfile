@@ -5,15 +5,16 @@ RUN apk add --no-cache \
     cmake \
     musl-dev
 
+RUN cargo install cargo-chef
+
+
 FROM base-builder AS planner
 WORKDIR /app
-RUN cargo install cargo-chef
 COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM base-builder AS cacher
 WORKDIR /app
-RUN cargo install cargo-chef
 COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json --bin astionicbot --target x86_64-unknown-linux-musl
 
@@ -35,20 +36,23 @@ RUN apk add --no-cache \
     nodejs \
     ffmpeg \
     ca-certificates \
-    tzdata && \
-    pip3 install --no-cache-dir --break-system-packages yt-dlp bgutil-ytdlp-pot-provider
+    tzdata \
+    bash
 
-RUN adduser -D -s /bin/sh appuser
+RUN adduser -D -s /bin/bash appuser
 
 RUN mkdir -p /app/data && \
     chown -R appuser:appuser /app
 
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/astionicbot /usr/local/bin/astionicbot
+COPY --from=builder --chown=appuser:appuser /app/target/x86_64-unknown-linux-musl/release/astionicbot /usr/local/bin/astionicbot
 COPY grrr.mp3 /app/grrr.mp3
 
 WORKDIR /app
 USER appuser
 
+COPY --chown=appuser:appuser entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
 ENV RUST_LOG=info
 
-CMD ["astionicbot"]
+ENTRYPOINT ["/app/entrypoint.sh"]

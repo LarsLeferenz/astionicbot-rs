@@ -10,17 +10,34 @@ pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
 
     let guild_id = ctx.guild_id().unwrap();
 
-    let manager = songbird::get(ctx.serenity_context())
-        .await
-        .expect("Songbird Voice client placed in at initialisation.")
-        .clone();
+    let manager = await_timeout!(
+        ctx,
+        songbird::get(ctx.serenity_context()),
+        10,
+        "Timed out trying to access voice manager"
+    )
+    .expect("Songbird Voice client placed in at initialisation.")
+    .clone();
 
     if let Some(handler_lock) = manager.get(guild_id) {
-        let handler = handler_lock.lock().await;
+        let handler = await_timeout!(
+            ctx,
+            handler_lock.lock(),
+            10,
+            "Timed out trying to aquire voice handler"
+        );
+
         let queue = handler.queue();
         queue.stop();
 
-        if let Err(e) = manager.remove(guild_id).await {
+        let leave_result = await_timeout!(
+            ctx,
+            manager.remove(guild_id),
+            10,
+            "Timed out trying to leave voice chat"
+        );
+
+        if let Err(e) = leave_result {
             println!("Failed to leave voice channel: {}", e);
             ctx.send(
                 CreateReply::default().embed(
@@ -34,29 +51,25 @@ pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
             return Ok(());
         }
 
-        ctx.channel_id()
-            .send_message(
-                &ctx.serenity_context().http,
-                CreateMessage::new().embed(
-                    CreateEmbed::new()
-                        .colour(0xffffff)
-                        .title(":stop_button: Playlist stopped!")
-                        .timestamp(Timestamp::now()),
-                ),
-            )
-            .await?;
+        ctx.send(
+            CreateReply::default().embed(
+                CreateEmbed::new()
+                    .colour(0xffffff)
+                    .title(":stop_button: Playlist stopped!")
+                    .timestamp(Timestamp::now()),
+            ),
+        )
+        .await?;
     } else {
-        ctx.channel_id()
-            .send_message(
-                &ctx.serenity_context().http,
-                CreateMessage::new().embed(
-                    CreateEmbed::new()
-                        .colour(0xf38ba8)
-                        .title(":warning: Not in a voice channel.")
-                        .timestamp(Timestamp::now()),
-                ),
-            )
-            .await?;
+        ctx.send(
+            CreateReply::default().embed(
+                CreateEmbed::new()
+                    .colour(0xf38ba8)
+                    .title(":warning: Not in a voice channel.")
+                    .timestamp(Timestamp::now()),
+            ),
+        )
+        .await?;
     }
     ctx.reply("Stopped.").await?;
     Ok(())

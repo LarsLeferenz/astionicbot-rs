@@ -1,5 +1,5 @@
 use crate::{Context, Error};
-use poise::command;
+use poise::{CreateReply, command};
 use rand::Rng;
 use serenity::builder::{CreateEmbed, CreateMessage};
 use serenity::model::prelude::*;
@@ -25,29 +25,25 @@ pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
             fisher_yates_shuffle(queue.make_contiguous()[1..].as_mut(), &mut rand::rng())
         });
 
-        ctx.channel_id()
-            .send_message(
-                &ctx.serenity_context().http,
-                CreateMessage::new().embed(
-                    CreateEmbed::new()
-                        .colour(0xffffff)
-                        .title(":notes: Queue shuffled!")
-                        .timestamp(Timestamp::now()),
-                ),
-            )
-            .await?;
+        ctx.send(
+            CreateReply::default().embed(
+                CreateEmbed::new()
+                    .colour(0xffffff)
+                    .title(":notes: Queue shuffled!")
+                    .timestamp(Timestamp::now()),
+            ),
+        )
+        .await?;
     } else {
-        ctx.channel_id()
-            .send_message(
-                &ctx.serenity_context().http,
-                CreateMessage::new().embed(
-                    CreateEmbed::new()
-                        .colour(0xf38ba8)
-                        .title(":warning: Not in a voice channel.")
-                        .timestamp(Timestamp::now()),
-                ),
-            )
-            .await?;
+        ctx.send(
+            CreateReply::default().embed(
+                CreateEmbed::new()
+                    .colour(0xf38ba8)
+                    .title(":warning: Not in a voice channel.")
+                    .timestamp(Timestamp::now()),
+            ),
+        )
+        .await?;
     }
     ctx.reply("Shuffled.").await?;
     Ok(())
