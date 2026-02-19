@@ -1,6 +1,7 @@
 #[macro_use]
 mod macros;
 mod commands;
+mod events;
 
 use poise::{FrameworkError, serenity_prelude as serenity};
 use serenity::all::ActivityData;
@@ -8,6 +9,8 @@ use serenity::{Client, GatewayIntents};
 use songbird::SerenityInit;
 use std::env;
 use std::process::ExitCode;
+
+use crate::events::HandleEvent;
 
 type Error = serenity::Error;
 type Context<'a> = poise::Context<'a, Data, Error>;
@@ -77,86 +80,13 @@ async fn main() -> ExitCode {
                 println!("Executed command {}!", ctx.command().qualified_name);
             })
         },
-        event_handler: |_ctx, event, _framework, _data| {
+        event_handler: |ctx, event, framework, data| {
             Box::pin(async move {
                 println!(
                     "Got an event in event handler: {:?}",
                     event.snake_case_name()
                 );
-
-                match event {
-                    serenity::FullEvent::Ready { data_about_bot } => {
-                        if std::fs::exists("restart_signal.txt").unwrap() {
-                            let content = std::fs::read_to_string("restart_signal.txt").unwrap();
-                            let mut lines = content.lines();
-                            let channel_id = lines
-                                .next()
-                                .and_then(|line| line.parse::<u64>().ok())
-                                .map(|integer| serenity::ChannelId::new(integer))
-                                .expect("Failed to parse channel ID from restart signal file.");
-                            let message_id = lines
-                                .next()
-                                .and_then(|line| line.parse::<u64>().ok())
-                                .map(|integer| serenity::MessageId::new(integer))
-                                .expect("Failed to parse message ID from restart signal file.");
-                            let mut message = channel_id
-                                .message(&_ctx.http, message_id)
-                                .await
-                                .expect("Failed to fetch message for restart signal.");
-
-                            message
-                                .reply(&_ctx.http, "Sucessfully restarted!")
-                                .await
-                                .expect("Failed to reply to message for restart signal.");
-
-                            std::fs::remove_file("restart_signal.txt")
-                                .expect("Failed to delete restart signal file.");
-                        }
-                    }
-                    serenity::FullEvent::Message { new_message } => {
-                        //println!("Received message: {}", new_message.content);
-                        if new_message.content.contains("Sup") {
-                            new_message
-                                .reply(&_ctx.http, "Not much")
-                                .await
-                                .expect("Das ist ja mies gelaufen");
-                        }
-                        let mut found = false;
-                        new_message.sticker_items.iter().for_each(|sticker| {
-                            println!("Sticker ID: {}, Name: {}", sticker.id, sticker.name);
-                            if sticker.name == "Sup" {
-                                found = true;
-                            }
-                        });
-                        if found {
-                            let audio_path = if std::path::Path::new("/app/grrr.mp3").exists() {
-                                "/app/grrr.mp3"
-                            } else {
-                                "grrr.mp3"
-                            };
-                            let attachment = serenity::CreateAttachment::path(audio_path)
-                                .await
-                                .expect("Doof");
-                            //new_message.reply(&_ctx.http, "Not much").await.expect("Mist");
-                            new_message
-                                .channel_id
-                                .send_message(
-                                    &_ctx.http,
-                                    serenity::CreateMessage::new()
-                                        .reference_message(new_message) // make it a reply (optional)
-                                        .add_sticker_id(serenity::StickerId::new(
-                                            1417970496720470126,
-                                        ))
-                                        .add_file(attachment),
-                                )
-                                .await
-                                .expect("Mist");
-                        }
-                    }
-                    _ => {}
-                };
-
-                Ok(())
+                event.handle(ctx, &framework, data).await
             })
         },
         ..Default::default()
@@ -213,9 +143,9 @@ async fn main() -> ExitCode {
         result = client.start() => {
             if let Err(why) = result {
                 println!("Client error: {:?}", why);
-                1
+                ExitCode::FAILURE
             } else {
-            0
+                ExitCode::SUCCESS
             }
 
         }
@@ -226,7 +156,7 @@ async fn main() -> ExitCode {
             client.shard_manager.shutdown_all().await;
             println!("Bot shutdown complete.");
 
-            42
+            ExitCode::from(42)
         }
         _ = tokio::signal::ctrl_c() => {
             println!("Received Ctrl+C, shutting down.");
@@ -234,9 +164,9 @@ async fn main() -> ExitCode {
             // Get songbird manager to stop all music
             client.shard_manager.shutdown_all().await;
             println!("Bot shutdown complete.");
-            0
+            ExitCode::SUCCESS
         }
     };
 
-    ExitCode::from(exit_code)
+    exit_code
 }

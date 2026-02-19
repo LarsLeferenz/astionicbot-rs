@@ -1,7 +1,7 @@
 use crate::{Context, Error};
 use poise::{CreateReply, command};
 use rand::Rng;
-use serenity::builder::{CreateEmbed, CreateMessage};
+use serenity::builder::CreateEmbed;
 use serenity::model::prelude::*;
 
 /// Shuffles the current queue

@@ -1,7 +1,7 @@
 use crate::commands::utils::to_time;
 use crate::{Context, Error};
 use poise::{CreateReply, command};
-use serenity::builder::{CreateEmbed, CreateMessage};
+use serenity::builder::CreateEmbed;
 use serenity::model::prelude::*;
 
 /// Shows the currently playing track

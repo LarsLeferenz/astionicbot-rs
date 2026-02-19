@@ -1,6 +1,6 @@
 use crate::{Context, Error};
 use poise::{CreateReply, command};
-use serenity::builder::{CreateEmbed, CreateMessage};
+use serenity::builder::CreateEmbed;
 use serenity::model::prelude::*;
 
 /// Stops playback and clears the queue
@@ -10,7 +10,7 @@ pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
 
     let guild_id = ctx.guild_id().unwrap();
 
-    let manager = await_timeout!(
+    let manager = await_timeout_or_return!(
         ctx,
         songbird::get(ctx.serenity_context()),
         10,
@@ -20,7 +20,7 @@ pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
     .clone();
 
     if let Some(handler_lock) = manager.get(guild_id) {
-        let handler = await_timeout!(
+        let handler = await_timeout_or_return!(
             ctx,
             handler_lock.lock(),
             10,
@@ -30,11 +30,20 @@ pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
         let queue = handler.queue();
         queue.stop();
 
-        let leave_result = await_timeout!(
+        drop(handler);
+
+        let _ = await_timeout_or_return!(
+            ctx,
+            manager.leave(guild_id),
+            10,
+            "Timed out trying to leave voice chat"
+        );
+
+        let leave_result = await_timeout_or_return!(
             ctx,
             manager.remove(guild_id),
             10,
-            "Timed out trying to leave voice chat"
+            "Timed out trying clean up music queue.."
         );
 
         if let Err(e) = leave_result {
@@ -55,7 +64,7 @@ pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
             CreateReply::default().embed(
                 CreateEmbed::new()
                     .colour(0xffffff)
-                    .title(":stop_button: Playlist stopped!")
+                    .title(":stop_button: Stopped playback and dropped queue!")
                     .timestamp(Timestamp::now()),
             ),
         )
@@ -71,6 +80,5 @@ pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
         )
         .await?;
     }
-    ctx.reply("Stopped.").await?;
     Ok(())
 }

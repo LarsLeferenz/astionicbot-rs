@@ -1,6 +1,6 @@
 use crate::{Context, Error};
 use poise::{CreateReply, command};
-use serenity::builder::{CreateEmbed, CreateMessage};
+use serenity::builder::CreateEmbed;
 use serenity::model::prelude::*;
 
 /// Skips the current track

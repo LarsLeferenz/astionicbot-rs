@@ -1,4 +1,4 @@
-macro_rules! await_timeout {
+macro_rules! await_timeout_or_return {
     ($ctx:expr, $fut:expr, $secs:expr, $title:expr) => {{
         let __result = tokio::select! {
             v = $fut => Some(v),

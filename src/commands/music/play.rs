@@ -12,7 +12,7 @@ use tokio::sync::MutexGuard;
 use tracing::info;
 
 fn get_ytdlp_args() -> Vec<String> {
-    let mut args = vec![
+    let args = vec![
         // Use the standard web client. bgutil-ytdlp-pot-provider supplies PO tokens
         // automatically via the YT_DLP_POT_BGUTIL_BASEURL env var, so this is now
         // the most stable and well-tested option.
