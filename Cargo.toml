@@ -17,6 +17,7 @@ poise = "0.6.1"
 reqwest = { version = "0.12.22", default-features = false, features = ["rustls-tls"] }
 symphonia = {version = "0.5.4", features = ['all', 'opt-simd'] }
 tokio-util = "0.7.18"
+mistralrs = {version= "0.7.0"}
 
 [profile.release]
 strip = true

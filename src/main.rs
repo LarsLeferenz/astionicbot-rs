@@ -9,6 +9,8 @@ use serenity::{Client, GatewayIntents};
 use songbird::SerenityInit;
 use std::env;
 use std::process::ExitCode;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use crate::events::HandleEvent;
 
@@ -18,6 +20,7 @@ type Context<'a> = poise::Context<'a, Data, Error>;
 pub struct Data {
     http_client: reqwest::Client,
     restart_requested: tokio_util::sync::CancellationToken,
+    llm_model: Arc<Mutex<Option<mistralrs::Model>>>,
 }
 
 async fn on_error(error: FrameworkError<'_, Data, Error>) {
@@ -126,6 +129,7 @@ async fn main() -> ExitCode {
                             panic!("Failed to create http client")
                         }),
                         restart_requested: restart_requested_token_clone,
+                        llm_model: Arc::new(Mutex::new(None)),
                 })
             })
         })
