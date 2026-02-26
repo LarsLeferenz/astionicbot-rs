@@ -10,17 +10,20 @@ use songbird::SerenityInit;
 use std::env;
 use std::process::ExitCode;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, mpsc};
 
 use crate::events::HandleEvent;
 
 type Error = serenity::Error;
 type Context<'a> = poise::Context<'a, Data, Error>;
 
+const LLM_TIMEOUT_SEC: u64 = 600;
+
 pub struct Data {
     http_client: reqwest::Client,
     restart_requested: tokio_util::sync::CancellationToken,
     llm_model: Arc<Mutex<Option<mistralrs::Model>>>,
+    llm_activity_tx: mpsc::UnboundedSender<()>,
 }
 
 async fn on_error(error: FrameworkError<'_, Data, Error>) {
@@ -45,6 +48,10 @@ async fn main() -> ExitCode {
     // Load .env if present (local dev). In production the container uses real env vars.
     dotenvy::dotenv().ok();
 
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls CryptoProvider");
+
     let token = env::var("DISCORD_TOKEN").expect("Set your DISCORD_TOKEN environment variable!");
 
     // Initialize error tracing
@@ -64,6 +71,7 @@ async fn main() -> ExitCode {
             commands::music::shuffle::shuffle(),
             commands::music::skip::skip(),
             commands::music::stop::stop(),
+            commands::music::say::say(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some(env::var("PREFIX").unwrap_or_else(|_| "!".to_string())),
@@ -107,6 +115,46 @@ async fn main() -> ExitCode {
             Box::pin(async move {
                 println!("Logged in as {}", _ready.user.name);
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
+
+                let llm_model = Arc::new(Mutex::new(None));
+                let (llm_activity_tx, mut llm_activity_rx) = mpsc::unbounded_channel();
+                let llm_idle_timeout = std::time::Duration::from_secs(LLM_TIMEOUT_SEC);
+
+                tokio::spawn({
+                    let llm_model = llm_model.clone();
+                    async move {
+                        let idle_sleep = tokio::time::sleep(llm_idle_timeout);
+                        tokio::pin!(idle_sleep);
+
+                        loop {
+                            tokio::select! {
+                                _ = &mut idle_sleep => {
+                                    if let Ok(mut guard) = llm_model.try_lock() {
+                                        if guard.is_some() {
+                                            *guard = None;
+                                            println!(
+                                                "Dropped LLM model after {:?} of inactivity",
+                                                llm_idle_timeout
+                                            );
+                                        }
+                                    }
+                                    idle_sleep
+                                        .as_mut()
+                                        .reset(tokio::time::Instant::now() + llm_idle_timeout);
+                                }
+                                msg = llm_activity_rx.recv() => {
+                                    if msg.is_none() {
+                                        break;
+                                    }
+                                    idle_sleep
+                                        .as_mut()
+                                        .reset(tokio::time::Instant::now() + llm_idle_timeout);
+                                }
+                            }
+                        }
+                    }
+                });
+
                 Ok(Data {
                     http_client: reqwest::Client::builder()
                         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -129,7 +177,8 @@ async fn main() -> ExitCode {
                             panic!("Failed to create http client")
                         }),
                         restart_requested: restart_requested_token_clone,
-                        llm_model: Arc::new(Mutex::new(None)),
+                        llm_model: llm_model,
+                        llm_activity_tx,
                 })
             })
         })

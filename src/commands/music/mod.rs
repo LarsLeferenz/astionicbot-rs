@@ -6,6 +6,7 @@ pub mod pause;
 pub mod play;
 pub mod queue;
 pub mod resume;
+pub mod say;
 pub mod shuffle;
 pub mod skip;
 pub mod stop;

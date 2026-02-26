@@ -1,11 +1,13 @@
+use crate::commands::music::say::synthesize_audio;
 use crate::{Data, Error};
-use ::serenity::all::EditMessage;
+use ::serenity::all::{EditAttachments, EditMessage};
 use mistralrs::ChatCompletionChunkResponse;
 use mistralrs::ChunkChoice;
 use mistralrs::Delta;
 use mistralrs::GgufModelBuilder;
 use mistralrs::PagedAttentionMetaBuilder;
 use mistralrs::Response;
+use mistralrs::TextModelBuilder;
 use poise::FrameworkContext;
 use poise::serenity_prelude as serenity;
 
@@ -50,8 +52,10 @@ const SYSTEM_PROMPT: &str =
     "Du bist ein Discord Bot namens \"Larsibot\" mit der ID <@717769413457215528>.\n
 Beantworte Fragen auf Deutsch, Englisch ist eine böse Sprache.\n
 Außerdem erhälst du vorherige Nachrichten in dem Kanal, diese haben die Rolle \"context\".
-Deine Antworten sollten kurz sein, maximal 4 Sätze.
-Am Ende der Frage MUSST du den Nutzer kreativ beleidigen.";
+Am Anfang der Nachricht musst du den Nutzer für seine Nachricht loben, im Sinne von \"Das ist die klügste Frage die ich je gehört habe\", aber nicht in genau diesem Wortlaut.
+Deine Antworten sollten kurz sein, maximal 5 Sätze.
+Am Ende der Frage MUSST du den Nutzer kreativ beleidigen.
+Verwende einige Emojis, wenn der Kontext es erlaubt.";
 
 async fn handle_mention(
     ctx: &Context,
@@ -70,9 +74,11 @@ async fn handle_mention(
         )
         .await?;
 
+    let _ = data.llm_activity_tx.send(());
+
     let mut guard = tokio::select! {
         v = data.llm_model.lock() => v,
-        _ = tokio::time::sleep(std::time::Duration::from_secs(30)) => {
+        _ = tokio::time::sleep(std::time::Duration::from_secs(60)) => {
             reply.edit(&ctx.http,  EditMessage::new().content("Timed out trying to aquire model")).await?;
             return Err(Error::Other("Timed out trying to lock model"))
         },
@@ -84,13 +90,17 @@ async fn handle_mention(
             reply
                 .edit(&ctx.http, EditMessage::new().content("Loading model..."))
                 .await?;
-            let model = GgufModelBuilder::new(
-                "./models",                                 // local directory containing the GGUF
-                vec!["Qwen3-4B-Instruct-2507-Q3_K_L.gguf"], // local GGUF filename(s)
-            )
-            //.with_device(mistralrs::Device::Cuda(mistralrs::CudaDevice::new(0)?))
-            .with_logging()
-            .with_paged_attn(|| PagedAttentionMetaBuilder::default().build());
+            // let model = GgufModelBuilder::new(
+            //     "./models",                                 // local directory containing the GGUF
+            //     vec!["Qwen3-4B-Instruct-2507-Q3_K_L.gguf"], // local GGUF filename(s)
+            // )
+            // //.with_device(mistralrs::Device::Cuda(mistralrs::CudaDevice::new(0)?))
+            // .with_logging()
+            // .with_paged_attn(|| PagedAttentionMetaBuilder::default().build());
+
+            let model = TextModelBuilder::new("./models/Qwen3-30B-A3B-Instruct-2507-FP8")
+                .with_logging()
+                .with_paged_attn(|| PagedAttentionMetaBuilder::default().build());
 
             let model = model.unwrap();
             let model = model.build().await;
@@ -134,7 +144,7 @@ async fn handle_mention(
     }
     llm_messages = llm_messages.add_message(
         mistralrs::TextMessageRole::User,
-        format!("{}: {}", message.author.name, message.content),
+        format!("<@{}> sagte: {}", message.author.id, message.content),
     );
 
     let mut response = "".to_string();
@@ -169,28 +179,29 @@ async fn handle_mention(
         }
     }
 
-    println!("Finished llm stream");
-    Ok(())
-}
+    println!("Finished llm stream, creating TTS");
 
-fn quicksort(arr: &mut Vec<i32>) {
-    if arr.len() <= 1 {
-        return;
-    }
-    let pivot = arr[0];
-    let mut left = Vec::new();
-    let mut right = Vec::new();
-    for &item in arr.iter().skip(1) {
-        if item <= pivot {
-            left.push(item);
-        } else {
-            right.push(item);
+    let tts_result = synthesize_audio(&response).await;
+
+    let output_path = match tts_result {
+        Ok(path) => path,
+        Err(e) => {
+            return Err(Error::Other("Failed to generate TTS"));
         }
-    }
-    quicksort(&mut left);
-    quicksort(&mut right);
-    arr.clear();
-    arr.extend(left.into_iter());
-    arr.push(pivot);
-    arr.extend(right.into_iter());
+    };
+
+    let attachment = serenity::CreateAttachment::path(output_path)
+        .await
+        .expect("Failed to create attachment for TTS audio");
+
+    reply
+        .edit(
+            &ctx.http,
+            EditMessage::new()
+                .content(&response)
+                .attachments(EditAttachments::new().add(attachment)),
+        )
+        .await?;
+
+    Ok(())
 }
